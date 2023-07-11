@@ -29,6 +29,7 @@ pub struct Rasterizer {
     fragment_shader: Option<fn(&FragmentShaderPayload) -> Vector3<f64>>,
     frame_buf: Vec<Vector3<f64>>,
     depth_buf: Vec<f64>,
+    //frame_sample: Vec<Vec<(f64,Vector3<f64>,f64)>>,
     width: u64,
     height: u64,
 }
@@ -49,31 +50,54 @@ impl Rasterizer {
         r.height = h;
         r.frame_buf.resize((w * h) as usize, Vector3::zeros());
         r.depth_buf.resize((w * h) as usize, 0.0);
+        //r.frame_sample.resize((w * h) as usize, Vec::new());
         r.texture = None;
         r
     }
 
-    fn get_index(height: u64, width: u64, x: usize, y: usize) -> usize {
-        ((height - 1 - y as u64) * width + x as u64) as usize
+    // fn get_index(height: u64, width: u64, x: usize, y: usize) -> usize {
+    //     ((height - 1 - y as u64) * width + x as u64) as usize
+    // }
+    fn get_index(&self, x: usize, y: usize) -> usize {
+        ((self.height - 1 - y as u64) * self.width + x as u64) as usize
     }
 
-    fn set_pixel(height: u64, width: u64, frame_buf: &mut Vec<Vector3<f64>>, point: &Vector3<f64>, color: &Vector3<f64>) {
-        let ind = (height as f64 - 1.0 - point.y) * width as f64 + point.x;
-        frame_buf[ind as usize] = *color;
+    fn set_depth(&mut self, point: &Vector3<f64>, depth: f64) -> bool {
+        let ind = (self.height as f64 - 1.0 - point.y) * self.width as f64 + point.x;
+        if depth>self.depth_buf[ind as usize]{
+            self.depth_buf[ind as usize] = depth;
+            true
+        } else {
+            false
+        }
+    }
+
+    // fn set_pixel(height: u64, width: u64, frame_buf: &mut Vec<Vector3<f64>>, point: &Vector3<f64>, color: &Vector3<f64>) {
+    //     let ind = (height as f64 - 1.0 - point.y) * width as f64 + point.x;
+    //     frame_buf[ind as usize] = *color;
+    // }
+    fn set_pixel(&mut self, point: &Vector3<f64>, color: &Vector3<f64>) {
+        let ind = (self.height as f64 - 1.0 - point.y) * self.width as f64 + point.x;
+        self.frame_buf[ind as usize] = *color;
     }
 
     pub fn clear(&mut self, buff: Buffer) {
         match buff {
-            Buffer::Color =>
-                self.frame_buf.fill(Vector3::new(0.0, 0.0, 0.0)),
-            Buffer::Depth =>
-                self.depth_buf.fill(f64::MAX),
+            Buffer::Color => {
+                self.frame_buf.fill(Vector3::new(0.0, 0.0, 0.0));
+                //self.frame_sample.fill(Vec::new());
+            }
+            Buffer::Depth => {
+                self.depth_buf.fill(f64::NEG_INFINITY);
+            }
             Buffer::Both => {
                 self.frame_buf.fill(Vector3::new(0.0, 0.0, 0.0));
-                self.depth_buf.fill(f64::MAX);
+                self.depth_buf.fill(f64::NEG_INFINITY);
+                //self.frame_sample.fill(Vec::new());
             }
         }
     }
+
     pub fn set_model(&mut self, model: Matrix4<f64>) {
         self.model = model;
     }
@@ -109,10 +133,39 @@ impl Rasterizer {
 
     pub fn rasterize_triangle(&mut self, triangle: &Triangle, mvp: Matrix4<f64>) {
         /*  Implement your code here  */
-
-
+        let (t, view_space_pos)=Self::get_new_tri(&triangle,self.view,self.model,mvp,(self.width,self.height));
+        let xmin=t.v[0][0].min(t.v[1][0]).min(t.v[2][0]) as usize;
+        let xmax=(t.v[0][0].max(t.v[1][0]).max(t.v[2][0])+1.0) as usize;
+        let ymin=t.v[0][1].min(t.v[1][1]).min(t.v[2][1]) as usize;
+        let ymax=(t.v[0][1].max(t.v[1][1]).max(t.v[2][1])+1.0) as usize;
+        for x in xmin..=xmax {
+            for y in ymin..=ymax {
+                if inside_triangle(x as f64 + 0.5, y as f64 + 0.5,&t.v) {
+                    let d=Self::depth(x as f64,y as f64,&t);
+                    if self.set_depth(&Vector3::new(x as f64,y as f64 ,0.0), d) {
+                        let (a,b,c)=compute_barycentric2d(x as f64, y as f64, &t.v);
+                        let view=Self::interpolate_Vec3(a,b,c,view_space_pos[0],view_space_pos[1],view_space_pos[2],1.0);
+                        let n=Self::interpolate_Vec3(a,b,c,t.normal[0],t.normal[1],t.normal[2],1.0);
+                        let col=Self::interpolate_Vec3(a,b,c,t.color[0],t.color[1],t.color[2],1.0);
+                        let tc=Self::interpolate_Vec2(a,b,c,t.tex_coords[0],t.tex_coords[1],t.tex_coords[2],1.0);
+                        let mut r=None;
+                        if self.texture.is_none() {
+                            r=None;
+                        } else {
+                            r=Some(Rc::new(self.texture.as_ref().unwrap()))
+                        }
+                        let final_color=self.fragment_shader.unwrap()(&FragmentShaderPayload::new(&col,&n,&tc,r,&view));
+                        self.set_pixel(&Vector3::new(x as f64,y as f64 ,0.0), &final_color);
+                    }
+                }
+            }
+        }
     }
-    
+
+    pub fn depth(x: f64,y:f64,t: &Triangle) -> f64 {
+        let (a,b,c)=compute_barycentric2d(x, y, &t.v);
+        a*t.v[0][2]+b*t.v[1][2]+c*t.v[2][2]
+    }
     fn interpolate_Vec3(a: f64, b: f64, c: f64, vert1: Vector3<f64>, vert2: Vector3<f64>, vert3: Vector3<f64>, weight: f64) -> Vector3<f64> {
         (a * vert1 + b * vert2 + c * vert3) / weight
     }

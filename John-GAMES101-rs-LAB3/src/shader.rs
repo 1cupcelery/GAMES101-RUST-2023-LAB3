@@ -11,9 +11,9 @@ pub struct FragmentShaderPayload<'a> {
 }
 
 impl<'a> FragmentShaderPayload<'a> {
-    pub fn new(col: &Vector3<f64>, nor: &Vector3<f64>, tc: &Vector2<f64>, tex: Option<Rc<&'a Texture>>) -> Self {
+    pub fn new(col: &Vector3<f64>, nor: &Vector3<f64>, tc: &Vector2<f64>, tex: Option<Rc<&'a Texture>>,v:&Vector3<f64>) -> Self {
         FragmentShaderPayload {
-            view_pos: Vector3::zeros(),
+            view_pos: v.clone(),
             color: col.clone(),
             normal: nor.clone(),
             tex_coords: tc.clone(),
