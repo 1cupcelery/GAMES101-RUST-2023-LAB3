@@ -162,7 +162,7 @@ pub fn phong_fragment_shader(payload: &FragmentShaderPayload) -> V3f {
     let p = 150.0;
 
     // ping point的信息
-    let normal = payload.normal;
+    let normal = payload.normal/length(payload.normal);
     let point = payload.view_pos;
     let color = payload.color;
 
@@ -172,10 +172,21 @@ pub fn phong_fragment_shader(payload: &FragmentShaderPayload) -> V3f {
     for light in lights {
         // TODO: For each light source in the code, calculate what the *ambient*, *diffuse*, and *specular* 
         // components are. Then, accumulate that result on the *result_color* object.
-
-
+        let r_2=length(light.position-point)*length(light.position-point);
+        let l=(light.position-point)/length(light.position-point);
+        let v=(eye_pos-point)/length(eye_pos-point);
+        let h=(v+l)/length(v+l);
+        let diffuse=((light.intensity/r_2)*(normal.dot(&l)).max(0.0)).component_mul(&kd);
+        let specular=((light.intensity/r_2)*(normal.dot(&h)).max(0.0).powf(p)).component_mul(&ks);
+        result_color=result_color+diffuse+specular;
     }
+    let ambient=amb_light_intensity.component_mul(&ka);
+    result_color=result_color+ambient;
     result_color * 255.0
+}
+
+pub fn length(v:Vector3<f64>) ->f64 {
+    (v[0]*v[0]+v[1]*v[1]+v[2]*v[2]).sqrt()
 }
 
 pub fn texture_fragment_shader(payload: &FragmentShaderPayload) -> V3f {
