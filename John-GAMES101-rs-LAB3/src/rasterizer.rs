@@ -4,7 +4,7 @@ use nalgebra::{Matrix4, Vector2, Vector3, Vector4};
 use crate::shader::{FragmentShaderPayload, VertexShaderPayload};
 use crate::texture::Texture;
 use crate::triangle::Triangle;
-use crate::utils::phong_fragment_shader;
+use crate::utils::{phong_fragment_shader, texture_fragment_shader};
 
 #[allow(dead_code)]
 pub enum Buffer {
@@ -150,13 +150,11 @@ impl Rasterizer {
                         let col=Self::interpolate_Vec3(a,b,c,t.color[0],t.color[1],t.color[2],1.0);
                         let tc=Self::interpolate_Vec2(a,b,c,t.tex_coords[0],t.tex_coords[1],t.tex_coords[2],1.0);
                         let mut r=None;
-                        if self.texture.is_none() {
-                            r=None;
-                        } else {
+                        if self.texture.is_some() {
                             r=Some(Rc::new(self.texture.as_ref().unwrap()))
                         }
                         //let final_color=self.fragment_shader.unwrap()(&FragmentShaderPayload::new(&col,&n,&tc,r,&view));
-                        let final_color=phong_fragment_shader(&FragmentShaderPayload::new(&col,&n,&tc,r,&view));
+                        let final_color=texture_fragment_shader(&FragmentShaderPayload::new(&col,&n,&tc,r,&view));
                         self.set_pixel(&Vector3::new(x as f64,y as f64 ,0.0), &final_color);
                     }
                 }
