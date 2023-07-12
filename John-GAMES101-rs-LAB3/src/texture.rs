@@ -26,8 +26,10 @@ impl Texture {
         if v < 0.0 { v = 0.0; }
         if v > 1.0 { v = 1.0; }
 
-        let u_img = u * self.width as f64;
-        let v_img = (1.0 - v) * self.height as f64;
+        let u_img = u * (self.width-1) as f64;
+        let v_img = (1.0 - v) * (self.height-1) as f64;
+        // let u_img = u * self.width- as f64;
+        // let v_img = (1.0 - v) * self.height as f64;
         let color: &VecN<u8, 3> = self.img_data.at_2d(v_img as i32, u_img as i32).unwrap();
 
         Vector3::new(color[2] as f64, color[1] as f64, color[0] as f64)

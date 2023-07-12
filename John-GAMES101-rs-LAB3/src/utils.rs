@@ -1,6 +1,6 @@
 use std::os::raw::c_void;
 use nalgebra::{Matrix3, Matrix4, Vector3, Vector4};
-use opencv::core::{Mat, MatTraitConst};
+use opencv::core::{Mat, MatTraitConst, norm};
 use opencv::imgproc::{COLOR_RGB2BGR, cvt_color};
 use crate::shader::{FragmentShaderPayload, VertexShaderPayload};
 use crate::texture::Texture;
@@ -257,7 +257,7 @@ pub fn bump_fragment_shader(payload: &FragmentShaderPayload) -> V3f {
 
     let p = 150.0;
 
-    let normal = payload.normal;
+    let n = payload.normal/length(payload.normal);
     let point = payload.view_pos;
     let color = payload.color;
 
@@ -272,9 +272,20 @@ pub fn bump_fragment_shader(payload: &FragmentShaderPayload) -> V3f {
     // dV = kh * kn * (h(u,v+1/h)-h(u,v))
     // Vector ln = (-dU, -dV, 1)
     // Normal n = normalize(TBN * ln)
-
-    let mut result_color = Vector3::zeros();
-    result_color = normal;
+    let x=n.x;
+    let y=n.y;
+    let z=n.z;
+    let t=Vector3::new(x*y/(x*x+z*z).sqrt(),(x*x+z*z).sqrt(),z*y/(x*x+z*z).sqrt());
+    let b=n.cross(&t);
+    let TBN=Matrix3::new(t.x,b.x,n.x,t.y,b.y,n.y,t.z,b.z,n.z);
+    let u=payload.tex_coords[0];
+    let v=payload.tex_coords[1];
+    let w=payload.clone().texture.clone().unwrap().width as f64;
+    let h=payload.clone().texture.clone().unwrap().height as f64;
+    let dU=kh * kn * (payload.clone().texture.clone().unwrap().get_color(u+1.0/w,v).norm()-payload.clone().texture.clone().unwrap().get_color(u,v).norm());
+    let dV=kh * kn * (payload.clone().texture.clone().unwrap().get_color(u,v+1.0/h).norm()-payload.clone().texture.clone().unwrap().get_color(u,v).norm());
+    let ln =Vector3::new (-dU, -dV, 1.0);
+    let result_color = TBN*ln/length(TBN*ln);
 
     result_color * 255.0
 }
