@@ -309,8 +309,8 @@ pub fn displacement_fragment_shader(payload: &FragmentShaderPayload) -> V3f {
 
     let p = 150.0;
 
-    let normal = payload.normal;
-    let point = payload.view_pos;
+    let n = payload.normal/length(payload.normal);
+    let mut point = payload.view_pos;
     let color = payload.color;
 
     let (kh, kn) = (0.2, 0.1);
@@ -325,14 +325,35 @@ pub fn displacement_fragment_shader(payload: &FragmentShaderPayload) -> V3f {
     // Vector ln = (-dU, -dV, 1)
     // Position p = p + kn * n * h(u,v)
     // Normal n = normalize(TBN * ln)
+    let x=n.x;
+    let y=n.y;
+    let z=n.z;
+    let t=Vector3::new(x*y/(x*x+z*z).sqrt(),(x*x+z*z).sqrt(),z*y/(x*x+z*z).sqrt());
+    let b=n.cross(&t);
+    let TBN=Matrix3::new(t.x,b.x,n.x,t.y,b.y,n.y,t.z,b.z,n.z);
+    let u=payload.tex_coords[0];
+    let v=payload.tex_coords[1];
+    let w=payload.clone().texture.clone().unwrap().width as f64;
+    let h=payload.clone().texture.clone().unwrap().height as f64;
+    let dU=kh * kn * (payload.clone().texture.clone().unwrap().get_color(u+1.0/w,v).norm()-payload.clone().texture.clone().unwrap().get_color(u,v).norm());
+    let dV=kh * kn * (payload.clone().texture.clone().unwrap().get_color(u,v+1.0/h).norm()-payload.clone().texture.clone().unwrap().get_color(u,v).norm());
+    let ln =Vector3::new (-dU, -dV, 1.0);
+    point=point+kn * n * payload.clone().texture.clone().unwrap().get_color(u,v).norm();
+    let normal=TBN*ln/length(TBN*ln);
 
     let mut result_color = Vector3::zeros();
     for light in lights {
         // TODO: For each light source in the code, calculate what the *ambient*, *diffuse*, and *specular* 
         // components are. Then, accumulate that result on the *result_color* object.
-
-        
+        let r_2=length(light.position-point)*length(light.position-point);
+        let l=(light.position-point)/length(light.position-point);
+        let v=(eye_pos-point)/length(eye_pos-point);
+        let h=(v+l)/length(v+l);
+        let diffuse=((light.intensity/r_2)*(normal.dot(&l)).max(0.0)).component_mul(&kd);
+        let specular=((light.intensity/r_2)*(normal.dot(&h)).max(0.0).powf(p)).component_mul(&ks);
+        result_color=result_color+diffuse+specular;
     }
-
+    let ambient=amb_light_intensity.component_mul(&ka);
+    result_color=result_color+ambient;
     result_color * 255.0
 }
